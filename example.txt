@@ -1,0 +1,17 @@
+/XMX5XMXABCE
+
+0-0:96.1.1(serial number)
+1-0:1.8.1(07829.818*kWh) # powerConsumedT1
+1-0:1.8.2(09314.796*kWh) # powerConsumedT2
+1-0:2.8.1(05399.507*kWh) # powerDeliveredT1
+1-0:2.8.2(11861.108*kWh) # powerDeliveredT1
+0-0:96.14.0(0002)        # currentTariff
+1-0:1.7.0(0000.20*kW)    # currentInput
+1-0:2.7.0(0000.00*kW)    # currentOutput
+0-0:96.13.1()
+0-0:96.13.0()
+0-1:96.1.0(gasmeter id)
+0-1:24.1.0(03)
+0-1:24.3.0(201221120000)(00)(60)(1)(0-1:24.2.0)(m3) # gasConsumed
+(08365.100)
+!
