@@ -4,8 +4,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"regexp"
 	"strconv"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func sliceContains(slice []string, val string) bool {
@@ -17,14 +22,45 @@ func sliceContains(slice []string, val string) bool {
 	return false
 }
 
+var (
+	powerConsumed = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "power_consumed",
+		Help: "The total power consumed in kWh",
+	},
+		[]string{"tariff"},
+	)
+	powerDelivered = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "power_delivered",
+		Help: "The total power delivered in kWh",
+	},
+		[]string{"tariff"},
+	)
+	currentTariff = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "current_tariff",
+		Help: "The power tariff currently in effect",
+	})
+	currentImport = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "current_import",
+		Help: "The power currently being imported in kW",
+	})
+	currentExport = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "current_export",
+		Help: "The power currently being exported in kW",
+	})
+	gasConsumed = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "gas_consumed",
+		Help: "The total gas consumed in m3",
+	})
+)
+
 type P1Frame struct {
 	powerConsumedT1  float64
 	powerConsumedT2  float64
 	powerDeliveredT1 float64
 	powerDeliveredT2 float64
 	currentTariff    float64
-	currentInput     float64
-	currentOutput    float64
+	currentImport    float64
+	currentExport    float64
 	gasConsumed      float64
 }
 
@@ -60,20 +96,28 @@ func p1DataToFrame(data string) P1Frame {
 		switch key := match[1]; key {
 		case "1-0:1.8.1":
 			frame.powerConsumedT1 = f
+			powerConsumed.WithLabelValues("1").Set(f)
 		case "1-0:1.8.2":
 			frame.powerConsumedT2 = f
+			powerConsumed.WithLabelValues("2").Set(f)
 		case "1-0:2.8.1":
 			frame.powerDeliveredT1 = f
+			powerDelivered.WithLabelValues("1").Set(f)
 		case "1-0:2.8.2":
 			frame.powerDeliveredT2 = f
+			powerDelivered.WithLabelValues("2").Set(f)
 		case "0-0:96.14.0":
 			frame.currentTariff = f
+			currentTariff.Set(f)
 		case "1-0:1.7.0":
-			frame.currentInput = f
+			frame.currentImport = f
+			currentImport.Set(f)
 		case "1-0:2.7.0":
-			frame.currentOutput = f
+			frame.currentExport = f
+			currentExport.Set(f)
 		case "0-1:24.3.0":
 			frame.gasConsumed = f
+			gasConsumed.Set(f)
 		default:
 			log.Fatalf("Could not find key (%s) for value (%s).\n", match[1], match[2])
 		}
@@ -90,4 +134,17 @@ func main() {
 
 	fmt.Printf("%+v", frame)
 
+	registry := prometheus.NewRegistry()
+	registerer := prometheus.WrapRegistererWithPrefix("p1_", registry)
+	registerer.MustRegister(powerConsumed)
+	registerer.MustRegister(powerDelivered)
+	registerer.MustRegister(currentTariff)
+	registerer.MustRegister(currentImport)
+	registerer.MustRegister(currentExport)
+	registerer.MustRegister(gasConsumed)
+
+	handler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
+
+	http.Handle("/metrics", handler)
+	http.ListenAndServe(":2112", nil)
 }
