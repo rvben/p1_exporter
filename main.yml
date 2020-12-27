@@ -1,0 +1,17 @@
+---
+- name: Install P1 Exporter
+  hosts: all
+  become: true
+  vars:
+    app_name: p1_exporter
+  tasks:
+    - name: Place app binary
+      copy:
+        src: "{{ app_name }}"
+        dest: "/usr/bin/{{ app_name }}"
+        mode: "0755"
+        
+    - name: Place service file
+      template:
+        src: service
+        dest: /lib/systemd/system/{{ app_name }}.service
