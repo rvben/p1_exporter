@@ -2,14 +2,12 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -119,69 +117,48 @@ func (p *P1SerialReader) Read() string {
 	return sb.String()
 }
 
-func p1DataToFrame(data string) P1Frame {
-	frame := P1Frame{}
-	data = strings.TrimSuffix(data, "\n")
-	toSkip := []string{"0-0:96.1.1", "0-1:96.1.0", "0-1:24.1.0", "1-3:0.2.8", "0-0:1.0.0"}
-	pat := regexp.MustCompile(`([0-1]\-\d:\d+.\d+.\d+).*\((.+?)(\*.*?)?\)`)
-	matches := pat.FindAllStringSubmatch(data, -1)
-	fmt.Println(data)
-	fmt.Printf("%#v", matches)
-	for _, match := range matches {
-		if sliceContains(toSkip, match[1]) {
-			continue
-		}
-		fmt.Printf("%#v\n", match)
+func setMetric(match []string) {
+	toSkip := []string{"0-0:96.1.1", "0-1:96.1.0", "0-1:24.1.0", "1-3:0.2.8", "0-0:1.0.0", "1-0:99.97.0", "0-0:96.13.0"}
+	if match != nil && !sliceContains(toSkip, match[1]) {
 		f, err := strconv.ParseFloat(match[2], 64)
 		if err != nil {
-			log.Fatalf("Could not parse (%s).\n Error: %s", match[0], err)
+			log.Printf("Could not parse (%s).\n Error: %s\n", match[0], err)
 		}
 		switch key := match[1]; key {
 		case "1-0:1.8.1":
-			frame.powerConsumedT1 = f
 			powerConsumed.WithLabelValues("1").Set(f)
 		case "1-0:1.8.2":
-			frame.powerConsumedT2 = f
 			powerConsumed.WithLabelValues("2").Set(f)
 		case "1-0:2.8.1":
-			frame.powerDeliveredT1 = f
 			powerDelivered.WithLabelValues("1").Set(f)
 		case "1-0:2.8.2":
-			frame.powerDeliveredT2 = f
 			powerDelivered.WithLabelValues("2").Set(f)
 		case "0-0:96.14.0":
-			frame.currentTariff = f
 			currentTariff.Set(f)
 		case "1-0:1.7.0":
-			frame.currentImport = f
 			currentImport.Set(f)
 		case "1-0:2.7.0":
-			frame.currentExport = f
 			currentExport.Set(f)
 		case "0-1:24.3.0":
-			frame.gasConsumed = f
 			gasConsumed.Set(f)
 		case "0-1:24.2.1":
-			frame.gasConsumed = f
 			gasConsumed.Set(f)
 		default:
 			// log.Printf("Could not find key (%s) for value (%s).\n", match[1], match[2])
-			continue
 		}
 	}
-	return frame
 }
-func main() {
 
-	// p := P1TxtReader{filePath: "exampl.txt"}
-	p := P1SerialReader{portName: "/dev/ttyUSB0", baud: 115200}
-	go func() {
-		for {
-			data := p.Read()
-			p1DataToFrame(data)
-			time.Sleep(5 * time.Second)
-		}
-	}()
+func recordMetrics(scanner *bufio.Scanner) {
+	pat := regexp.MustCompile(`([0-1]\-\d:\d+.\d+.\d+).*\((.+?)(\*.*?)?\)`)
+	for scanner.Scan() {
+		line := scanner.Text()
+		match := pat.FindStringSubmatch(line)
+		go setMetric(match)
+	}
+}
+
+func main() {
 
 	registry := prometheus.NewRegistry()
 	registerer := prometheus.WrapRegistererWithPrefix("p1_", registry)
@@ -192,10 +169,17 @@ func main() {
 	registerer.MustRegister(currentExport)
 	registerer.MustRegister(gasConsumed)
 
-	handler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
+	c := &serial.Config{Name: "/dev/ttyUSB0", Baud: 115200}
+	s, err := serial.OpenPort(c)
+	if err != nil {
+		log.Fatal(err)
+	}
+	scanner := bufio.NewScanner(s)
+	go recordMetrics(scanner)
 
+	handler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
 	http.Handle("/metrics", handler)
-	err := http.ListenAndServe(":2112", nil)
+	err = http.ListenAndServe(":2112", nil)
 	if err != nil {
 		log.Fatalf("\nError: %v", err)
 	}
