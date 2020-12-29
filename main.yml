@@ -5,11 +5,17 @@
   vars:
     app_name: p1_exporter
   tasks:
+    - name: Create exporter user
+      user:
+        name: exporter
+        group: dialout
+
     - name: Place app binary
       copy:
         src: "{{ app_name }}"
-        dest: "/usr/bin/{{ app_name }}"
+        dest: "/usr/local/bin/{{ app_name }}"
         mode: "0755"
+        group: dialout
         
     - name: Place service file
       template:

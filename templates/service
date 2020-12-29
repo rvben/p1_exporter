@@ -1,11 +1,16 @@
 [Unit]
-Description={{ app_name }}
+Description="{{ app_name }}"
 
 [Service]
 Type=simple
 Restart=always
 RestartSec=5s
-ExecStart=/usr/bin/{{ app_name }}
+ExecStart=/usr/local/bin/{{ app_name }}
+User=exporter
+Environment=P1_SERIAL_NAME={{ P1_SERIAL_NAME | default("/dev/ttyUSB0") }}
+Environment=P1_SERIAL_BAUD={{ P1_SERIAL_BAUD | default("115200")}}
+Environment=P1_SERIAL_PARITY={{ P1_SERIAL_PARITY | default("0")}}
+Environment=P1_SERIAL_SIZE={{ P1_SERIAL_SIZE | default("0")}}
 
 [Install]
 WantedBy=multi-user.target
